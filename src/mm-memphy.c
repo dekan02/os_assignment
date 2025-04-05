@@ -163,6 +163,19 @@ int MEMPHY_dump(struct memphy_struct *mp)
   /*TODO dump memphy contnt mp->storage
    *     for tracing the memory content
    */
+   if (!mp->storage || mp->maxsz == 0 || !mp) {
+      printf('Physical memory struct error');
+      return -1;
+   }
+
+   printf("Physical Memory Dump (Size: %d):\n", mp->maxsz);
+   for (int i = 0; i < mp->maxsz; i++) {
+      if (mp->storage[i] != 0) {
+         printf("%d: 0x%08llx\t\t0x%08x\n", i, (uintptr_t)(mp->storage + i), mp->storage[i]);
+      }
+   }
+   printf("\n");
+
    return 0;
 }
 

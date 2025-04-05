@@ -70,9 +70,9 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
 {
   /*Allocate at the toproof */
   struct vm_rg_struct rgnode;
-
+  
   /* TODO: commit the vmaid */
-  // rgnode.vmaid
+  rgnode.vmaid = vmaid;
 
   if (get_free_vmrg_area(caller, vmaid, size, &rgnode) == 0)
   {
@@ -89,30 +89,46 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
 
   /* TODO retrive current vma if needed, current comment out due to compiler redundant warning*/
   /*Attempt to increate limit to get space */
-  //struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
+  if (!cur_vma) {
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  }
 
-
-  //int inc_sz = PAGING_PAGE_ALIGNSZ(size);
-  //int inc_limit_ret;
+  int inc_sz = PAGING_PAGE_ALIGNSZ(size);
+  int inc_limit_ret;
 
   /* TODO retrive old_sbrk if needed, current comment out due to compiler redundant warning*/
-  //int old_sbrk = cur_vma->sbrk;
+  int old_sbrk = cur_vma->sbrk;
+  int new_sbrk = old_sbrk + inc_sz;
 
   /* TODO INCREASE THE LIMIT as inovking systemcall 
    * sys_memap with SYSMEM_INC_OP 
    */
-  //struct sc_regs regs;
-  //regs.a1 = ...
-  //regs.a2 = ...
-  //regs.a3 = ...
+  if (inc_vma_limit(caller, vmaid, inc_sz) == -1) return -1;
+
+  struct sc_regs regs;
+  regs.a1 = SYSMEM_INC_OP;
+  regs.a2 = inc_sz;
+  regs.a3 = vmaid;
   
   /* SYSCALL 17 sys_memmap */
+  syscall(caller, 17, &regs);
 
   /* TODO: commit the limit increment */
+  cur_vma->sbrk = new_sbrk;
 
   /* TODO: commit the allocation address 
-  // *alloc_addr = ...
   */
+  rgnode.rg_start = old_sbrk;
+  rgnode.rg_end = new_sbrk;
+
+  caller->mm->symrgtbl[rgid].rg_start = rgnode.rg_start;
+  caller->mm->symrgtbl[rgid].rg_end = rgnode.rg_end;
+  caller->mm->symrgtbl[rgid].vmaid = vmaid;
+
+  *alloc_addr = rgnode.rg_start;
+  pthread_mutex_unlock(&mmvm_lock);
 
   return 0;
 
