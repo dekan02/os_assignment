@@ -69,6 +69,7 @@ struct vm_rg_struct *get_symrg_byid(struct mm_struct *mm, int rgid)
 int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr)
 {
   /*Allocate at the toproof */
+  pthread_mutex_lock(&mmvm_lock);
   struct vm_rg_struct rgnode;
   
   /* TODO: commit the vmaid */
