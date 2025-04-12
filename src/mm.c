@@ -114,7 +114,7 @@ int vmap_page_range(struct pcb_t *caller,           // process call
                     0) != 0) {      // no swap offset
             return -1;
         }
-
+        enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
         /* Move to next frame and page */
         fpit = fpit->fp_next;
         pgit++;
