@@ -86,7 +86,7 @@ int vmap_page_range(struct pcb_t *caller,           // process call
                     struct framephy_struct *frames, // list of the mapped frames
                     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                                   // no guarantee all given pages are mapped
-  struct framephy_struct *fpit;
+  struct framephy_struct *fpit = frames;
   int pgit = 0;
   int pgn = PAGING_PGN(addr);
 
@@ -133,7 +133,7 @@ int vmap_page_range(struct pcb_t *caller,           // process call
 int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
 {
   int pgit, fpn;
-  struct framephy_struct *newfp_str = NULL;
+  struct framephy_struct *newfp_str = NULL, *head = NULL;
 
   /* TODO: allocate the page 
   //caller-> ...
@@ -147,21 +147,29 @@ int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struc
   {
   /* TODO: allocate the page 
    */
-    if (MEMPHY_get_freefp(caller->mram, &fpn) == 0)
-    {
-      newfp_str->fpn = fpn;
-      newfp_str->owner = caller->mm;
-      if (pgit < req_pgnum - 1) {  // If not last page
-            newfp_str->fp_next = malloc(sizeof(struct framephy_struct));
-            newfp_str = newfp_str->fp_next;
-        } else {
-            newfp_str->fp_next = NULL;  // Last page
-        }
-    }
-    else
-    { // TODO: ERROR CODE of obtaining somes but not enough frames
+    if (MEMPHY_get_freefp(caller->mram, &fpn) != 0) {
+      // Free allocated frames if partial allocation fails
+      while (head != NULL) {
+        struct framephy_struct *tmp = head;
+        head = head->fp_next;
+        MEMPHY_put_freefp(caller->mram, tmp->fpn);
+        free(tmp);
+      }
       return -1;
     }
+
+    struct framephy_struct *newfp = malloc(sizeof(struct framephy_struct));
+    newfp->fpn = fpn;
+    newfp->owner = caller->mm;
+    newfp->fp_next = NULL;
+
+    if (head == NULL) {
+      head = newfp;
+      *frm_lst = head;
+    } else {
+      newfp_str->fp_next = newfp;
+    }
+    newfp_str = newfp;
   }
 
   return 0;
