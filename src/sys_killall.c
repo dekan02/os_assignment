@@ -13,18 +13,20 @@
 #include "stdio.h"
 #include "libmem.h"
 #include "queue.h"
+#include "string.h"
+#include "pthread.h"
+
 int __sys_killall(struct pcb_t *caller, struct sc_regs* regs)
 {
     char proc_name[100];
     uint32_t data;
-    int i, j;
+    int i = 0, j;
     int terminated = 0;
 
     //hardcode for demo only
     uint32_t memrg = regs->a1;
     
     /* Get name of the target proc */
-    int i = 0;
     data = 0;
     while(data != -1){
         libread(caller, memrg, i, &data);
