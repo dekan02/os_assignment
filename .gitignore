@@ -7,3 +7,4 @@
 # makefile output
 syscalltbl.lst
 obj/
+os
