@@ -79,7 +79,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
   {
     caller->mm->symrgtbl[rgid].rg_start = rgnode.rg_start;
     caller->mm->symrgtbl[rgid].rg_end = rgnode.rg_end;
- 
+
     *alloc_addr = rgnode.rg_start;
 
     pthread_mutex_unlock(&mmvm_lock);
@@ -104,9 +104,12 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
   int new_sbrk = old_sbrk + inc_sz;
 
   /* TODO INCREASE THE LIMIT as inovking systemcall 
-   * sys_memap with SYSMEM_INC_OP 
-   */
-  if (inc_vma_limit(caller, vmaid, inc_sz) == -1) return -1;
+  * sys_memap with SYSMEM_INC_OP 
+  */
+  if (inc_vma_limit(caller, vmaid, inc_sz) == -1){
+    pthread_mutex_unlock(&mmvm_lock);
+    return -1;
+  } 
 
   struct sc_regs regs;
   regs.a1 = SYSMEM_INC_OP;
@@ -182,7 +185,37 @@ int liballoc(struct pcb_t *proc, uint32_t size, uint32_t reg_index)
   int addr;
 
   /* By default using vmaid = 0 */
-  return __alloc(proc, 0, reg_index, size, &addr);
+  int ret = __alloc(proc, 0, reg_index, size, &addr);
+
+  uint32_t rq_start, rq_end, pid;
+  rq_start = proc->mm->symrgtbl[reg_index].rg_start;
+  rq_end = proc->mm->symrgtbl[reg_index].rg_end;
+  pid = proc->pid;
+  struct vm_area_struct *vma = get_vma_by_num(proc->mm, 0);
+
+  printf("\n================================================================\n");
+  printf("\nALLOCATION REGION: Rg start: %u - Rg end:  %u\n", rq_start, rq_end);
+  printf("\n===== PHYSICAL MEMORY AFTER ALLOCATION =====\n");
+  printf("Pid: %d - Region: %d Address: %08x Size: %d BYTE\n", pid, reg_index, addr, size);
+  print_pgtbl(proc, 0, -1); // this function will print the page table
+
+  printf("\n======= HEAP SEGMENT =======\n");
+  printf("Heap Start : %ld\n", vma->vm_start);
+  printf("Heap End   : %ld\n", vma->vm_end);
+  printf("Heap sbrk  : %ld\n", vma->sbrk);
+
+  printf("\n======= FREE REGION =======\n");
+  struct vm_rg_struct *free_rg = vma->vm_freerg_list;
+  while (free_rg != NULL)
+  {
+      if (free_rg->rg_start < free_rg->rg_end)
+      {
+          printf("Free: %ld -> %ld\n", free_rg->rg_start, free_rg->rg_end);
+      }
+      free_rg = free_rg->rg_next;
+  }
+  printf("\n================================================================\n");
+  return ret;
 }
 
 /*libfree - PAGING-based free a region memory
@@ -194,9 +227,34 @@ int liballoc(struct pcb_t *proc, uint32_t size, uint32_t reg_index)
 int libfree(struct pcb_t *proc, uint32_t reg_index)
 {
   /* TODO Implement free region */
+  int ret = __free(proc, 0, reg_index);
+  uint32_t  pid;
+  pid = proc->pid;
+  struct vm_area_struct *vma = get_vma_by_num(proc->mm, 0);
 
+  printf("\n================================================================\n");
+  printf("\n===== PHYSICAL MEMORY AFTER DEALLOCATION =====\n");
+  printf("Pid: %d - Region: %d\n", pid, reg_index);
+  print_pgtbl(proc, 0, -1);
+
+  printf("\n======= HEAP SEGMENT =======\n");
+  printf("Heap Start : %ld\n", vma->vm_start);
+  printf("Heap End   : %ld\n", vma->vm_end);
+  printf("Heap sbrk  : %ld\n", vma->sbrk);
+
+  printf("\n======= FREE REGION =======\n");
+  struct vm_rg_struct *free_rg = vma->vm_freerg_list;
+  while (free_rg != NULL)
+  {
+      if (free_rg->rg_start < free_rg->rg_end)
+      {
+          printf("Free: %ld -> %ld\n", free_rg->rg_start, free_rg->rg_end);
+      }
+      free_rg = free_rg->rg_next;
+  }
+  printf("\n================================================================\n");
   /* By default using vmaid = 0 */
-  return __free(proc, 0, reg_index);
+  return ret;
 }
 
 /*pg_getpage - get the page in ram
@@ -323,11 +381,11 @@ int pg_getval(struct mm_struct *mm, int addr, BYTE *data, struct pcb_t *caller)
 }
 
 /*pg_setval - write value to given offset
- *@mm: memory region
- *@addr: virtual address to acess
- *@value: value
- *
- */
+*@mm: memory region
+*@addr: virtual address to acess
+*@value: value
+*
+*/
 int pg_setval(struct mm_struct *mm, int addr, BYTE value, struct pcb_t *caller)
 {
   int pgn = PAGING_PGN(addr);
@@ -388,6 +446,8 @@ int libread(
 {
   BYTE data;
   int val = __read(proc, 0, source, offset, &data);
+
+  *destination = data;
 
   /* TODO update result of reading action*/
   //destination 
@@ -491,11 +551,11 @@ int find_victim_page(struct mm_struct *mm, int *retpgn)
 }
 
 /*get_free_vmrg_area - get a free vm region
- *@caller: caller
- *@vmaid: ID vm area to alloc memory region
- *@size: allocated size
- *
- */
+*@caller: caller
+*@vmaid: ID vm area to alloc memory region
+*@size: allocated size
+*
+*/
 int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_struct *newrg)
 {
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
