@@ -97,7 +97,6 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
   }
 
   int inc_sz = PAGING_PAGE_ALIGNSZ(size);
-  int inc_limit_ret;
 
   /* TODO retrive old_sbrk if needed, current comment out due to compiler redundant warning*/
   int old_sbrk = cur_vma->sbrk;
@@ -304,7 +303,7 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
     syscall(caller, 17, &regs_out);
 
     pte_set_swap(&mm->pgd[vicpgn], 0, swpfpn);
-    PAGING_PAGE_UNSET_PRESENT(mm->pgd[vicpgn]);
+    CLRBIT(mm->pgd[vicpgn], PAGING_PTE_PRESENT_MASK); // clear present bit
 
     uint32_t tgtpte = mm->pgd[pgn];
     
@@ -318,7 +317,7 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
    //regs.a2 =...
    //regs.a3 =..
    */
-    if (PAGING_PAGE_SWAPPED(tgtpte)) {
+    if ((tgtpte & PAGING_PTE_SWAPPED_MASK) != 0) {
       int tgt_swpfpn = PAGING_PTE_SWP(tgtpte);
       struct sc_regs regs_in;
       regs_in.a1 = SYSMEM_SWP_OP;
@@ -329,7 +328,8 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
 
     /* Update page table */
     pte_set_fpn(&mm->pgd[pgn], tgtfpn);
-    PAGING_PAGE_SET_PRESENT(mm->pgd[pgn]);
+    SETBIT(mm->pgd[pgn], PAGING_PTE_PRESENT_MASK); // Set present bit
+    CLRBIT(mm->pgd[pgn], PAGING_PTE_SWAPPED_MASK); // Clear swapped bit
 
     /* Update its online status of the target page */
     //pte_set_fpn() &
@@ -551,11 +551,11 @@ int find_victim_page(struct mm_struct *mm, int *retpgn)
 }
 
 /*get_free_vmrg_area - get a free vm region
-*@caller: caller
-*@vmaid: ID vm area to alloc memory region
-*@size: allocated size
-*
-*/
+ *@caller: caller
+ *@vmaid: ID vm area to alloc memory region
+ *@size: allocated size
+ *
+ */
 int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_struct *newrg)
 {
   struct vm_area_struct *cur_vma = get_vma_by_num(caller->mm, vmaid);
