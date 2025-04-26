@@ -116,7 +116,9 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
   regs.a3 = vmaid;
   
   /* SYSCALL 17 sys_memmap */
+  printf("[DBG] __alloc: growing VMA by %d bytes (old sbrk=%d)\n", inc_sz, old_sbrk);
   syscall(caller, 17, &regs);
+  printf("[DBG] __alloc: syscall returned, new sbrk should be %d\n", new_sbrk);
 
   /* TODO: commit the limit increment */
   cur_vma->sbrk = new_sbrk;
@@ -579,7 +581,21 @@ int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_s
         newrg->rg_end = rgit->rg_start + size;
 
         if (region_size > size) {
-            rgit->rg_start = newrg->rg_end;
+          struct vm_rg_struct *remaining = malloc(sizeof(struct vm_rg_struct));
+          if (!remaining) return -1; // Handle malloc failure
+
+          remaining->rg_start = newrg->rg_end;
+          remaining->rg_end = rgit->rg_end;
+          remaining->rg_next = rgit->rg_next;
+
+          // Update the free list
+          if (prev == NULL) {
+              cur_vma->vm_freerg_list = remaining;
+          } else {
+              prev->rg_next = remaining;
+          }
+
+          free(rgit); // Free the original node
         } else {
             if (prev == NULL) {
                 cur_vma->vm_freerg_list = rgit->rg_next; // Update head
@@ -596,7 +612,7 @@ int get_free_vmrg_area(struct pcb_t *caller, int vmaid, int size, struct vm_rg_s
     rgit = rgit->rg_next;
   }
 
-  return 0;
+  return -1;
 }
 
 //#endif
