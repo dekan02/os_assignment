@@ -86,7 +86,7 @@ int vmap_page_range(struct pcb_t *caller,           // process call
                     struct framephy_struct *frames, // list of the mapped frames
                     struct vm_rg_struct *ret_rg)    // return mapped region, the real mapped fp
 {                                                   // no guarantee all given pages are mapped
-  struct framephy_struct *fpit = frames;
+  struct framephy_struct *fpit;
   int pgit = 0;
   int pgn = PAGING_PGN(addr);
 
@@ -97,7 +97,7 @@ int vmap_page_range(struct pcb_t *caller,           // process call
   */
   ret_rg->rg_start = addr;
   ret_rg->rg_end = addr + (pgnum * PAGING_PAGESZ);
-  ret_rg->vmaid = 0;  // Default to first VMA
+  // ret_rg->vmaid = 0;  // Default to first VMA
 
   /* TODO map range of frame to address space
    *      [addr to addr + pgnum*PAGING_PAGESZ
@@ -114,6 +114,7 @@ int vmap_page_range(struct pcb_t *caller,           // process call
                     0) != 0) {      // no swap offset
             return -1;
         }
+        printf("[DBG] vmap: PTE[%d] = 0x%08x\n", pgn + pgit, caller->mm->pgd[pgn + pgit]);
         enlist_pgn_node(&caller->mm->fifo_pgn, pgn + pgit);
         /* Move to next frame and page */
         fpit = fpit->fp_next;
@@ -133,21 +134,24 @@ int vmap_page_range(struct pcb_t *caller,           // process call
 int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struct **frm_lst)
 {
   int pgit, fpn;
-  struct framephy_struct *newfp_str = NULL, *head = NULL;
+  struct framephy_struct *tail = NULL, *head = NULL;
+
+  printf("[DBG] alloc_pages_range: requesting %d pages\n", req_pgnum);
 
   /* TODO: allocate the page 
   //caller-> ...
   //frm_lst-> ...
   */
-  frm_lst = NULL;  // empty list
-  newfp_str = malloc(sizeof(struct framephy_struct));  // first node
-  *frm_lst = newfp_str;  // head of list
+  // *frm_lst = NULL;  // empty list
+  // newfp_str = malloc(sizeof(struct framephy_struct));  // first node
+  // *frm_lst = newfp_str;  // head of list
 
   for (pgit = 0; pgit < req_pgnum; pgit++)
   {
   /* TODO: allocate the page 
    */
     if (MEMPHY_get_freefp(caller->mram, &fpn) != 0) {
+      printf("[DBG] alloc_pages_range: failed at page %d\n", pgit);
       // Free allocated frames if partial allocation fails
       while (head != NULL) {
         struct framephy_struct *tmp = head;
@@ -155,6 +159,7 @@ int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struc
         MEMPHY_put_freefp(caller->mram, tmp->fpn);
         free(tmp);
       }
+      *frm_lst = NULL;
       return -1;
     }
 
@@ -165,12 +170,13 @@ int alloc_pages_range(struct pcb_t *caller, int req_pgnum, struct framephy_struc
 
     if (head == NULL) {
       head = newfp;
-      *frm_lst = head;
+      tail = newfp;
     } else {
-      newfp_str->fp_next = newfp;
+      tail->fp_next = newfp;
+      tail = newfp;
     }
-    newfp_str = newfp;
   }
+  *frm_lst = head;
 
   return 0;
 }
@@ -254,11 +260,14 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
 
   /* By default the owner comes with at least one vma */
   vma0->vm_id = 0;
-  vma0->vm_start = 0;
-  vma0->vm_end = vma0->vm_start;
+  vma0->vm_start = 0x0;
+  vma0->vm_end = 0x1000;
   vma0->sbrk = vma0->vm_start;
-  struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
-  enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
+
+  if (vma0->vm_start < vma0->vm_end) {
+      struct vm_rg_struct *first_rg = init_vm_rg(vma0->vm_start, vma0->vm_end);
+      enlist_vm_rg_node(&vma0->vm_freerg_list, first_rg);
+  }
 
   /* TODO update VMA0 next */
   // vma0->next = ...
