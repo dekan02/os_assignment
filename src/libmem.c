@@ -23,6 +23,7 @@
 #include <pthread.h>
 
 static pthread_mutex_t mmvm_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t pgd_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*enlist_vm_freerg_list - add new rg to freerg_list
  *@mm: memory region
@@ -108,7 +109,7 @@ int __alloc(struct pcb_t *caller, int vmaid, int rgid, int size, int *alloc_addr
   if (inc_vma_limit(caller, vmaid, inc_sz) == -1){
     pthread_mutex_unlock(&mmvm_lock);
     return -1;
-  } 
+  }
 
   struct sc_regs regs;
   regs.a1 = SYSMEM_INC_OP;
@@ -279,10 +280,16 @@ int pg_getpage(struct mm_struct *mm, int pgn, int *fpn, struct pcb_t *caller)
 
     /* TODO: Play with your paging theory here */
     /* Find victim page */
-    find_victim_page(caller->mm, &vicpgn);
-    if (vicpgn == -1) return -1;
+    if (find_victim_page(caller->mm, &vicpgn) != 0)
+      return -1;
+    
+    if (vicpgn < 0 || vicpgn >= PAGING_MAX_PGN) 
+      return -1;
 
+    pthread_mutex_lock(&pgd_mutex);
     vicpte = mm->pgd[vicpgn];
+    pthread_mutex_unlock(&pgd_mutex);
+
     vicfpn = PAGING_FPN(vicpte);
 
     /* Get free frame in MEMSWP */
@@ -543,6 +550,10 @@ int find_victim_page(struct mm_struct *mm, int *retpgn)
 
   /* TODO: Implement the theorical mechanism to find the victim page */
   if (!pg) return -1;
+  if (!mm || !mm->fifo_pgn) {
+      fprintf(stderr, "No victim page available or invalid mm\n");
+      return -1;
+  }
 
   *retpgn = pg->pgn;
   mm->fifo_pgn = pg->pg_next;

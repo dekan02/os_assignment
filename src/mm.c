@@ -7,6 +7,7 @@
 #include "mm.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 /*
  * init_pte - Initialize PTE entry
@@ -25,11 +26,10 @@ int init_pte(uint32_t *pte,
       //   return -1;  // Invalid setting
 
       /* Valid setting with FPN */
+      SETVAL(*pte, fpn, PAGING_PTE_FPN_MASK, PAGING_PTE_FPN_LOBIT);
       SETBIT(*pte, PAGING_PTE_PRESENT_MASK);
       CLRBIT(*pte, PAGING_PTE_SWAPPED_MASK);
       CLRBIT(*pte, PAGING_PTE_DIRTY_MASK);
-
-      SETVAL(*pte, fpn, PAGING_PTE_FPN_MASK, PAGING_PTE_FPN_LOBIT);
     }
     else
     { // page swapped
@@ -257,6 +257,11 @@ int init_mm(struct mm_struct *mm, struct pcb_t *caller)
   struct vm_area_struct *vma0 = malloc(sizeof(struct vm_area_struct));
 
   mm->pgd = malloc(PAGING_MAX_PGN * sizeof(uint32_t));
+  if (!mm->pgd) {
+    perror("Failed to allocate pgd");
+    exit(EXIT_FAILURE);
+  }
+  memset(mm->pgd, 0, PAGING_MAX_PGN * sizeof(uint32_t));
 
   /* By default the owner comes with at least one vma */
   vma0->vm_id = 0;
